@@ -153,5 +153,12 @@ function show(v){document.querySelectorAll('.view').forEach(x=>x.classList.remov
 function renderAll(){renderDashboard();renderDiet();renderGym();renderProgress()}
 renderAll();
 </script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
 </body>
 </html>
