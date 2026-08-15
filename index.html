@@ -135,6 +135,56 @@ function clearNavyDay(){
   save(); renderAll();
 }
 
+
+const mealChoices = {
+  breakfast: [
+    {name:'Overnight oats + frozen fruit', kcal:350},
+    {name:'2 poached eggs + 2 tomatoes + toast', kcal:330},
+    {name:'3 boiled eggs + fruit + toast', kcal:400},
+    {name:'Galley breakfast — poached eggs + tomatoes', kcal:280},
+    {name:'Custom breakfast', kcal:null}
+  ],
+  dinner: [
+    {name:'Chicken + potatoes/rice + 2 portions vegetables', kcal:650},
+    {name:'Fish + potatoes + vegetables + sensible gravy', kcal:600},
+    {name:'Roast: lean meat + potatoes + plenty of vegetables', kcal:700},
+    {name:'Chicken curry + rice + vegetables; go easy on naan', kcal:700},
+    {name:'Lean pasta + tomato sauce + meat/chicken + vegetables', kcal:650},
+    {name:'Burger + salad/veg; small or skip chips', kcal:700},
+    {name:'Fish/chicken + rice/potatoes + vegetables', kcal:600},
+    {name:'Huel H&S + 2 eggs + vegetables + fruit', kcal:550},
+    {name:'Huel H&S + lean chicken/fish + vegetables', kcal:600},
+    {name:'Huel H&S + 2 eggs + toast + vegetables', kcal:650},
+    {name:'Custom dinner', kcal:null}
+  ]
+};
+function getMeal(type){ const k=type+'_'+dayIndex(); return state.meals && state.meals[k] ? state.meals[k] : null; }
+function setMeal(type,idx){ state.meals=state.meals||{}; const c=mealChoices[type][idx]; state.meals[type+'_'+dayIndex()]={name:c.name,kcal:c.kcal}; save(); renderAll(); }
+function setCustomMeal(type){
+  state.meals=state.meals||{};
+  const name=prompt('What did you have for '+type+'?'); if(!name)return;
+  const raw=prompt('Estimated calories for this meal? Enter a number, e.g. 650'); if(raw===null)return;
+  const kcal=parseInt(raw,10); if(isNaN(kcal)){alert('Please enter a calorie number.');return;}
+  state.meals[type+'_'+dayIndex()]={name:name,kcal:kcal}; save(); renderAll();
+}
+function clearMeal(type){ if(state.meals) delete state.meals[type+'_'+dayIndex()]; save(); renderAll(); }
+function mealPicker(type,label){
+  const current=getMeal(type);
+  const choices=mealChoices[type].map((m,i)=>`<button class="secondary mealChoice" onclick="setMeal('${type}',${i})">${m.name}${m.kcal!==null?' — ~'+m.kcal+' kcal':''}</button>`).join('');
+  let change='';
+  if(type==='dinner' && current && current.kcal!==null){
+    const diff=current.kcal-plannedDinnerKcal();
+    change=`<div class="small" style="margin-top:5px"><b>Planned dinner:</b> ~${plannedDinnerKcal()} kcal • <b>Change:</b> ${diff>=0?'+':''}${diff} kcal</div>`;
+  }
+  return `<div class="meal-picker"><div class="row"><b>${label}</b><span class="small">${current?(current.kcal===null?'':'~'+current.kcal+' kcal'):'Choose meal'}</span></div>
+  ${current?`<div class="success" style="margin:8px 0;padding:9px;border-radius:10px;font-size:13px"><b>Selected:</b> ${current.name}${current.kcal!==null?' — ~'+current.kcal+' kcal':''}${change}
+  <button class="secondary" style="margin-top:7px" onclick="clearMeal('${type}')">Reset</button></div>`:''}
+  <div class="meal-options">${choices}</div>
+  <button class="secondary" style="margin-top:7px" onclick="setCustomMeal('${type}')">✏️ Enter a different meal + kcal</button></div>`;
+}
+function selectedKcal(type,fallback){ const m=getMeal(type); return m && typeof m.kcal==='number' ? m.kcal : fallback; }
+function dayCalorieEstimate(){ return selectedKcal('breakfast',350)+200+120+selectedKcal('dinner',plannedDinnerKcal()); }
+
 function renderDashboard(){
 let selectedDinner=getMeal('dinner');
 let dinnerText=selectedDinner?selectedDinner.name:(hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]);
