@@ -51,9 +51,11 @@ footer{max-width:760px;margin:20px auto;color:var(--muted);font-size:11px;paddin
 const KEY='bizmakyFitnessV1';
 const state=JSON.parse(localStorage.getItem(KEY)||'null')||{
  startWeight:120, goalWeight:85, currentWeight:120, cycle:1, week:1, day:1,
- dietChecks:{}, gymChecks:{}, logs:{}, weights:[], huelDiet:36, huelHS:14, meals:{}
+ dietChecks:{}, gymChecks:{}, logs:{}, weights:[], huelDiet:36, huelHS:14, meals:{}, planStartDate:'2026-08-17'
 };
+if(!state.planStartDate) state.planStartDate='2026-08-17';
 function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+const PLAN_START='2026-08-17';
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const breakfasts=[
 'Overnight oats + frozen fruit','2 poached eggs + 2 tomatoes + toast',
@@ -85,6 +87,29 @@ A:{name:'Day A — Full Body',ex:[['Leg press','3 × 10'],['Chest press','3 × 1
 B:{name:'Day B — Lower + Conditioning',ex:[['Leg press','3 × 12'],['Romanian deadlift','3 × 10'],['Leg extension','3 × 12'],['Seated leg curl','3 × 12'],['Calf raise','3 × 15'],['Cable crunch','3 × 12–15']]},
 C:{name:'Day C — Upper + Conditioning',ex:[['Chest press','3 × 10'],['Lat pulldown','3 × 10'],['Seated cable row','3 × 10'],['Machine shoulder press','3 × 10'],['Cable lateral raise','2 × 12'],['Triceps pushdown','3 × 12'],['Dumbbell curl','3 × 12']]}
 };
+function localDateISO(){const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`;}
+function daysBetween(a,b){const A=new Date(a+'T00:00:00'); const B=new Date(b+'T00:00:00'); return Math.floor((B-A)/86400000);}
+function syncPlanDate(){
+  const today=localDateISO();
+  const start=state.planStartDate||PLAN_START;
+  const elapsed=daysBetween(start,today);
+  if(elapsed<0){state.preStart=true; return;}
+  if(!state.planStarted){
+    state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={};
+    state.planStarted=true;
+  }
+  state.preStart=false;
+  const cycleIndex=Math.floor(elapsed/28);
+  const inCycle=elapsed%28;
+  state.cycle=cycleIndex+1;
+  state.week=Math.floor(inCycle/7)+1;
+  state.day=(inCycle%7)+1;
+}
+function resetForMonday(){
+  state.planStartDate=PLAN_START; state.planStarted=false; state.preStart=true; state.cycle=1; state.week=1; state.day=1;
+  state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={};
+  save(); renderAll();
+}
 function dayIndex(){return (state.week-1)*7+(state.day-1)}
 function workoutKey(){return ['A','B','C'][[1,3,5].includes(state.day)?[1,3,5].indexOf(state.day):0]}
 function isGymDay(){return [1,3,5].includes(state.day)}
@@ -186,6 +211,10 @@ function selectedKcal(type,fallback){ const m=getMeal(type); return m && typeof 
 function dayCalorieEstimate(){ return selectedKcal('breakfast',350)+200+120+selectedKcal('dinner',plannedDinnerKcal()); }
 
 function renderDashboard(){
+if(state.preStart){
+  document.getElementById('dashboard').innerHTML=`<div class="card"><h2>⚓ Plan starts Monday 17 August</h2><p>Your 4-week rolling plan is ready. Nothing will count against your Huel stock or weekly progress before Monday.</p><div class="notice"><b>Monday = Cycle 1 • Week 1 • Day 1</b><br>Target: 1,800–2,000 kcal • 3 gym days/week • Navy Day available when duty has wiped you out.</div><button style="margin-top:10px" onclick="resetForMonday()">🚀 Reset test data for Monday</button></div>`;
+  return;
+}
 let selectedDinner=getMeal('dinner');
 let dinnerText=selectedDinner?selectedDinner.name:(hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]);
 let selectedBreakfast=getMeal('breakfast');
@@ -222,6 +251,7 @@ ${mealPicker('breakfast','Breakfast')}
 <div class="card"><h3>Today's Huel stock</h3><div class="row"><span>Lunch — Huel Diet</span><button onclick="useHuel('diet')">Use 1</button></div><div class="row"><span>Dinner — H&S</span><button onclick="useHuel('hs')">Use 1</button></div><p class="small">Only tap “Use 1” when you actually consume that serving.</p></div>`;
 }
 function renderDiet(){
+if(state.preStart){document.getElementById('diet').innerHTML='<div class="card"><h2>🥗 Diet starts Monday 17 August</h2><p class="small">Your Huel stock and daily checklist will begin counting from Monday.</p></div>';return;}
 let currentDinner = getMeal('dinner');
 let currentBreakfast = getMeal('breakfast');
 let dinnerDefault = hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length];
@@ -257,6 +287,7 @@ document.getElementById('diet').innerHTML=html;
 }
 function changeDay(delta){let n=(state.week-1)*7+state.day-1+delta;if(n<0)n=27;if(n>27)n=0;state.week=Math.floor(n/7)+1;state.day=n%7+1;save();renderAll()}
 function renderGym(){
+if(state.preStart){document.getElementById('gym').innerHTML='<div class="card"><h2>🏋️ Gym plan starts Monday 17 August</h2><p class="small">Week 1 begins with your first 3 planned gym sessions. Navy Day will be available whenever duty leaves you exhausted.</p></div>';return;}
 let type=gymType(), w=workouts[type], navy=!isGymDay() || !!state.gymChecks['navy'+dayIndex()];
 let cardio=state.week===1?'10–15 min easy':state.week===2?'15–20 min easy/moderate':state.week===3?'20 min intervals': '20 min moderate/interval';
 let html=`<div class="card"><div class="row"><div><h2>🏋️ ${w.name}</h2><div class="small">Week ${state.week} • ${days[state.day-1]}</div></div><span class="pill ${navy?'orange':'green'}">${navy?'NAVY DAY':'GYM DAY'}</span></div></div>`;
@@ -272,6 +303,7 @@ document.getElementById('gym').innerHTML=html;
 }
 
 function renderWeek(){
+  if(state.preStart){document.getElementById('week').innerHTML='<div class="card"><h2>📅 Week 1 starts Monday 17 August</h2><p class="small">Your weekly overview will begin tracking Monday–Sunday once the plan starts.</p></div>';return;}
   const wk=state.week;
   let totalDone=0,totalItems=0,gymDays=0,navyDays=0,calTotal=0;
   let rows='';
@@ -314,18 +346,20 @@ function changeWeek(delta){
 }
 function renderProgress(){
 let lost=state.startWeight-state.currentWeight;
+let startText=state.planStartDate||PLAN_START;
 let html=`<div class="card"><h2>📈 Progress</h2><div class="grid"><div class="stat"><b>${state.currentWeight} kg</b><span>Current</span></div><div class="stat"><b>${lost.toFixed(1)} kg</b><span>Lost</span></div><div class="stat"><b>${Math.round(pct())}%</b><span>To goal</span></div><div class="stat"><b>Cycle ${state.cycle}</b><span>Current cycle</span></div></div></div>
 <div class="card"><h3>Update weight</h3><div class="row"><input id="weightInput" type="number" step="0.1" value="${state.currentWeight}"><button onclick="addWeight()">Save weight</button></div><p class="small">Weigh under similar conditions and focus on the trend, not one day's number.</p></div>
 <div class="card"><h3>Goal progress</h3><div class="progress"><div style="width:${pct()}%"></div></div><p class="small">${state.startWeight} kg → ${state.goalWeight} kg</p></div>
 <div class="card"><h3>Weight history</h3>${state.weights.length?'<table><tr><th>Date</th><th>Weight</th></tr>'+state.weights.slice().reverse().map(x=>`<tr><td>${x.date}</td><td>${x.weight} kg</td></tr>`).join('')+'</table>':'<p class="small">No weigh-ins saved yet.</p>'}</div>
 <div class="card"><h3>Huel stock</h3><p>Huel Diet lunches remaining: <b>${state.huelDiet}</b> / 36</p><p>Hot & Savoury dinners remaining: <b>${state.huelHS}</b> / 14</p></div>
+<div class="card"><h3>⚓ Plan start</h3><p>Start date: <b>Monday 17 August 2026</b></p><p class="small">This resets your test entries and restores Huel stock to 36 Diet + 14 H&S.</p><button onclick="resetForMonday()">🚀 Reset test data for Monday</button></div>
 <div class="card"><h3>Rolling cycle</h3><p>Current: Cycle ${state.cycle}, Week ${state.week}, Day ${state.day}.</p><button onclick="nextCycle()">Start next 4-week cycle</button></div>`;
 document.getElementById('progress').innerHTML=html;
 }
 function addWeight(){let v=parseFloat(document.getElementById('weightInput').value);if(!isNaN(v)){state.currentWeight=v;state.weights.push({date:new Date().toLocaleDateString('en-GB'),weight:v});save();renderAll()}}
 function nextCycle(){state.cycle++;state.week=1;state.day=1;state.huelDiet=36;state.huelHS=14;state.dietChecks={};state.gymChecks={};state.logs={};save();renderAll()}
 function show(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(v).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAll()}
-function renderAll(){renderDashboard();renderDiet();renderGym();renderWeek();renderProgress()}
+function renderAll(){syncPlanDate();save();renderDashboard();renderDiet();renderGym();renderWeek();renderProgress()}
 renderAll();
 </script>
 <script>
