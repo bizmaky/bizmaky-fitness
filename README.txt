@@ -1,10 +1,10 @@
-Bizmaky Fitness V1.3
+Bizmaky Fitness V1.5
 
 New:
-- Week Overview tab: see all 7 days together.
-- Weekly completion percentage and average estimated kcal.
-- Daily meal and gym/Navy Day status at a glance.
-- Previous/next week navigation.
-- Navy Day button on Today, including scheduled gym days.
-- Existing flexible meal swaps and calorie adjustments remain.
-- Existing local progress data is preserved because the storage key is unchanged.
+- Gym is a rolling 3-session sequence: A -> B -> C, not fixed to weekdays.
+- Complete the next gym session on any day of the week.
+- Navy Day completes the next gym session in reduced form.
+- Week Overview tracks gym progress as 0/3 to 3/3.
+- Huel Hot & Savoury is a standalone dinner choice: 1 serving, without extra protein/veg.
+- H&S standalone estimate is ~400 kcal; check the pack label or enter a custom kcal value.
+- Existing galley meal swaps, calorie adjustments, plan start date and progress remain.

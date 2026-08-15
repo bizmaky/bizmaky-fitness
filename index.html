@@ -55,6 +55,10 @@ const state=JSON.parse(localStorage.getItem(KEY)||'null')||{
 };
 if(!state.planStartDate) state.planStartDate='2026-08-17';
 function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+if(!state.gymSessions) state.gymSessions={};
+for(let w=1;w<=4;w++) state.gymSessions[w]=state.gymSessions[w]||{A:false,B:false,C:false};
+if(!state.gymNavy) state.gymNavy={};
+
 const PLAN_START='2026-08-17';
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const breakfasts=[
@@ -95,7 +99,7 @@ function syncPlanDate(){
   const elapsed=daysBetween(start,today);
   if(elapsed<0){state.preStart=true; return;}
   if(!state.planStarted){
-    state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={};
+    state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={}; state.gymSessions={1:{A:false,B:false,C:false},2:{A:false,B:false,C:false},3:{A:false,B:false,C:false},4:{A:false,B:false,C:false}}; state.gymNavy={};
     state.planStarted=true;
   }
   state.preStart=false;
@@ -107,35 +111,60 @@ function syncPlanDate(){
 }
 function resetForMonday(){
   state.planStartDate=PLAN_START; state.planStarted=false; state.preStart=true; state.cycle=1; state.week=1; state.day=1;
-  state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={};
+  state.huelDiet=36; state.huelHS=14; state.dietChecks={}; state.gymChecks={}; state.logs={}; state.meals={}; state.gymSessions={1:{A:false,B:false,C:false},2:{A:false,B:false,C:false},3:{A:false,B:false,C:false},4:{A:false,B:false,C:false}}; state.gymNavy={};
   save(); renderAll();
 }
 function dayIndex(){return (state.week-1)*7+(state.day-1)}
-function workoutKey(){return ['A','B','C'][[1,3,5].includes(state.day)?[1,3,5].indexOf(state.day):0]}
-function isGymDay(){return [1,3,5].includes(state.day)}
-function gymType(){return state.day===1?'A':state.day===3?'B':'C'}
+function ensureGymSessions(){
+  state.gymSessions=state.gymSessions||{};
+  for(let w=1;w<=4;w++) state.gymSessions[w]=state.gymSessions[w]||{A:false,B:false,C:false};
+}
+function nextGymType(){
+  ensureGymSessions(); const s=state.gymSessions[state.week];
+  return !s.A?'A':!s.B?'B':!s.C?'C':null;
+}
+function gymCompletedCount(){ensureGymSessions(); const s=state.gymSessions[state.week]; return ['A','B','C'].filter(x=>s[x]).length;}
+function gymSessionDone(type){ensureGymSessions(); return !!state.gymSessions[state.week][type];}
+function completeGymSession(type){
+  ensureGymSessions(); state.gymSessions[state.week][type]=true;
+  state.gymLastSession={week:state.week,type,date:localDateISO()}; save(); renderAll();
+}
+function useNavyDay(){
+  const type=nextGymType();
+  if(!type){alert('All 3 gym sessions are already complete this week. Nice work!');return;}
+  ensureGymSessions(); state.gymSessions[state.week][type]=true;
+  state.gymNavy=state.gymNavy||{}; state.gymNavy[state.week+'_'+type]=true;
+  state.gymLastSession={week:state.week,type,date:localDateISO()}; save(); renderAll();
+}
+function clearNavyDay(){
+  const type=state.gymLastSession&&state.gymLastSession.week===state.week?state.gymLastSession.type:null;
+  if(type){state.gymSessions[state.week][type]=false; if(state.gymNavy) delete state.gymNavy[state.week+'_'+type];}
+  save(); renderAll();
+}
+function isGymDay(){return nextGymType()!==null}
+function gymType(){return nextGymType()}
 function hsToday(){return hsDays[state.week].includes(dayIndex()+1)}
 function toggle(obj,key){obj[key]=!obj[key];save();renderAll()}
 function pct(){return Math.max(0,Math.min(100,(state.startWeight-state.currentWeight)/(state.startWeight-state.goalWeight)*100))}
 function todayItems(){
-let items=[`Breakfast: ${breakfasts[state.day-1]}`,`Lunch: Huel Diet — 1 serving`,`Snack: ${snacks[state.day-1]}`,`Dinner: ${hsToday()?hs[(dayIndex())%hs.length]:galley[dayIndex()%galley.length]}`,`Daily calorie target: 1,800–2,000 kcal`];
-if(isGymDay()) items.push(`Gym: ${workouts[gymType()].name}`); else items.push('Recovery day: rest or optional easy walk');
-return items;
+  const next=nextGymType();
+  let items=[`Breakfast: ${breakfasts[state.day-1]}`,`Lunch: Huel Diet — 1 serving`,`Snack: ${snacks[state.day-1]}`,`Dinner: ${plannedDinnerNameForDay(dayIndex())}`,`Daily calorie target: 1,800–2,000 kcal`];
+  items.push(next?`Gym: Next session ${workouts[next].name}`:'Gym: 3/3 sessions complete this week');
+  return items;
 }
 
 function getMealForDay(type, absoluteIndex){
   const m=state.meals && state.meals[type+'_'+absoluteIndex];
   return m || null;
 }
+function plannedDinnerNameForDay(absoluteIndex){
+  const wk=Math.floor(absoluteIndex/7)+1, day=absoluteIndex%7;
+  return (hsDays[wk] && hsDays[wk].includes(absoluteIndex+1)) ? 'Huel Hot & Savoury — 1 serving' : galley[day%galley.length];
+}
 function plannedDinnerKcalForDay(absoluteIndex){
-  const wk=Math.floor(absoluteIndex/7)+1;
-  const day=absoluteIndex%7;
-  if(hsDays[wk] && hsDays[wk].includes(absoluteIndex+1)){
-    const vals=[550,600,650,550,600,650,550];
-    return vals[day%vals.length];
-  }
-  const vals=[650,600,700,700,650,700,600];
-  return vals[day%vals.length];
+  const wk=Math.floor(absoluteIndex/7)+1, day=absoluteIndex%7;
+  if(hsDays[wk] && hsDays[wk].includes(absoluteIndex+1)) return 400;
+  return [650,600,700,700,650,700,600][day%7];
 }
 function estimatedKcalForDay(absoluteIndex){
   const day=absoluteIndex%7;
@@ -148,8 +177,10 @@ function estimatedKcalForDay(absoluteIndex){
 function dayCompletion(absoluteIndex){
   const items=['t'+absoluteIndex+'_0','t'+absoluteIndex+'_1','t'+absoluteIndex+'_2','t'+absoluteIndex+'_3','t'+absoluteIndex+'_4'];
   const done=items.filter(k=>state.dietChecks[k]).length;
-  const gymDone=!!(state.gymChecks['navy'+absoluteIndex] || state.gymChecks['w'+absoluteIndex+'_warm'] || state.gymChecks['w'+absoluteIndex+'_0'] || state.gymChecks['w'+absoluteIndex+'_1']);
-  return {done,total:items.length,gymDone,navy:!!state.gymChecks['navy'+absoluteIndex]};
+  const wk=Math.floor(absoluteIndex/7)+1;
+  const gymDone=!!(state.gymLastSession && state.gymLastSession.week===wk);
+  const navy=!!(state.gymLastSession && state.gymLastSession.week===wk && state.gymLastSession.type && state.gymNavy && state.gymNavy[wk+'_'+state.gymLastSession.type]);
+  return {done,total:items.length,gymDone,navy};
 }
 function useNavyDay(){
   state.gymChecks['navy'+dayIndex()]=true;
@@ -170,6 +201,7 @@ const mealChoices = {
     {name:'Custom breakfast', kcal:null}
   ],
   dinner: [
+    {name:'Huel Hot & Savoury — 1 serving', kcal:400},
     {name:'Chicken + potatoes/rice + 2 portions vegetables', kcal:650},
     {name:'Fish + potatoes + vegetables + sensible gravy', kcal:600},
     {name:'Roast: lean meat + potatoes + plenty of vegetables', kcal:700},
@@ -177,9 +209,6 @@ const mealChoices = {
     {name:'Lean pasta + tomato sauce + meat/chicken + vegetables', kcal:650},
     {name:'Burger + salad/veg; small or skip chips', kcal:700},
     {name:'Fish/chicken + rice/potatoes + vegetables', kcal:600},
-    {name:'Huel H&S + 2 eggs + vegetables + fruit', kcal:550},
-    {name:'Huel H&S + lean chicken/fish + vegetables', kcal:600},
-    {name:'Huel H&S + 2 eggs + toast + vegetables', kcal:650},
     {name:'Custom dinner', kcal:null}
   ]
 };
@@ -216,11 +245,11 @@ if(state.preStart){
   return;
 }
 let selectedDinner=getMeal('dinner');
-let dinnerText=selectedDinner?selectedDinner.name:(hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]);
+let dinnerText=selectedDinner?selectedDinner.name:plannedDinnerNameForDay(dayIndex());
 let selectedBreakfast=getMeal('breakfast');
 let breakfastText=selectedBreakfast?selectedBreakfast.name:breakfasts[state.day-1];
 let items=[`Breakfast: ${breakfastText}`,`Lunch: Huel Diet — 1 serving`,`Snack: ${snacks[state.day-1]}`,`Dinner: ${dinnerText}`,`Daily calorie target: 1,800–2,000 kcal`];
-if(isGymDay()) items.push(`Gym: ${workouts[gymType()].name}`); else items.push('Recovery day: rest or optional easy walk');
+const nextGym=nextGymType(); items.push(nextGym?`Gym: Next session ${workouts[nextGym].name}`:'Gym: 3/3 sessions complete this week');
 let done=items.filter((_,i)=>state.dietChecks['t'+dayIndex()+'_'+i]).length;
 let total=items.length;
 let navy=!!state.gymChecks['navy'+dayIndex()];
@@ -254,7 +283,7 @@ function renderDiet(){
 if(state.preStart){document.getElementById('diet').innerHTML='<div class="card"><h2>🥗 Diet starts Monday 17 August</h2><p class="small">Your Huel stock and daily checklist will begin counting from Monday.</p></div>';return;}
 let currentDinner = getMeal('dinner');
 let currentBreakfast = getMeal('breakfast');
-let dinnerDefault = hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length];
+let dinnerDefault = plannedDinnerNameForDay(dayIndex());
 let breakfastDefault = breakfasts[state.day-1];
 let html=`<div class="card"><h2>🥗 4-Week Diet</h2>
 <p class="small">Target 1,800–2,000 kcal/day • estimates are guides, not exact galley nutrition</p>
@@ -287,21 +316,31 @@ document.getElementById('diet').innerHTML=html;
 }
 function changeDay(delta){let n=(state.week-1)*7+state.day-1+delta;if(n<0)n=27;if(n>27)n=0;state.week=Math.floor(n/7)+1;state.day=n%7+1;save();renderAll()}
 function renderGym(){
-if(state.preStart){document.getElementById('gym').innerHTML='<div class="card"><h2>🏋️ Gym plan starts Monday 17 August</h2><p class="small">Week 1 begins with your first 3 planned gym sessions. Navy Day will be available whenever duty leaves you exhausted.</p></div>';return;}
-let type=gymType(), w=workouts[type], navy=!isGymDay() || !!state.gymChecks['navy'+dayIndex()];
-let cardio=state.week===1?'10–15 min easy':state.week===2?'15–20 min easy/moderate':state.week===3?'20 min intervals': '20 min moderate/interval';
-let html=`<div class="card"><div class="row"><div><h2>🏋️ ${w.name}</h2><div class="small">Week ${state.week} • ${days[state.day-1]}</div></div><span class="pill ${navy?'orange':'green'}">${navy?'NAVY DAY':'GYM DAY'}</span></div></div>`;
-if(navy){
-html+=`<div class="card notice navy"><b>⚓ Navy Day</b><p>Do the minimum: 5 min warm-up → first 4 exercises → 5–10 min easy cardio. If you're genuinely exhausted, recovery is also a valid choice.</p><button onclick="completeNavy()">Complete Navy Day</button>${isGymDay()&&!state.gymChecks['navy'+dayIndex()]?`<button class="secondary" style="margin-left:6px" onclick="clearNavyDay()">Use full session instead</button>`:''}</div>`;
+if(state.preStart){document.getElementById('gym').innerHTML='<div class="card"><h2>🏋️ Gym plan starts Monday 17 August</h2><p class="small">The gym is now a rolling 3-session sequence. It is not tied to specific weekdays.</p></div>';return;}
+ensureGymSessions();
+const next=nextGymType();
+let html=`<div class="card"><div class="row"><div><h2>🏋️ Gym — Week ${state.week}</h2><div class="small">${gymCompletedCount()} / 3 sessions completed</div></div><span class="pill ${next?'blue':'green'}">${next?'NEXT: '+next:'WEEK COMPLETE'}</span></div></div>`;
+html+=`<div class="card"><h3>Rolling gym plan</h3>
+<div class="row"><span>Session 1 — Day A</span><span class="pill ${gymSessionDone('A')?'green':'blue'}">${gymSessionDone('A')?'✓ Done':'Not yet'}</span></div>
+<div class="row"><span>Session 2 — Day B</span><span class="pill ${gymSessionDone('B')?'green':'blue'}">${gymSessionDone('B')?'✓ Done':'Not yet'}</span></div>
+<div class="row"><span>Session 3 — Day C</span><span class="pill ${gymSessionDone('C')?'green':'blue'}">${gymSessionDone('C')?'✓ Done':'Not yet'}</span></div>
+<p class="small">Miss Monday? No problem. Come Tuesday and start Day A. The sequence follows your availability, not the calendar.</p></div>`;
+if(!next){
+ html+=`<div class="card success"><h3>🎉 3 / 3 complete</h3><p>You've completed this week's gym target. Anything extra is a bonus.</p></div>`;
 }else{
-html+=`<div class="card"><h3>Warm-up</h3><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_warm']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_warm')"><span>5–10 minutes easy cardio + mobility</span></label></div>`;
-html+=`<div class="card"><h3>Weights</h3>`;
-w.ex.forEach((e,i)=>{let k='w'+dayIndex()+'_'+i;let log=state.logs[k]||{};html+=`<div class="exercise"><div class="row"><b>${e[0]}</b><span class="small">${e[1]}</span></div><p class="small">${e[2]}</p><div class="sets">${[1,2,3].map(s=>`<label>Set ${s}<input type="number" step="1" value="${log['s'+s]||''}" onchange="logSet('${k}','s${s}',this.value)"></label>`).join('')}</div></div>`});
-html+=`</div><div class="card"><h3>Cardio</h3><p>${cardio}</p><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_cardio']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_cardio')"><span>Cardio completed</span></label></div>`;
+ const w=workouts[next];
+ const cardio=state.week===1?'10–15 min easy':state.week===2?'15–20 min easy/moderate':state.week===3?'20 min intervals':'20 min moderate/interval';
+ const navyKey=state.week+'_'+next;
+ html+=`<div class="card"><h2>${w.name}</h2><p class="small">This is your next session. Do it whenever your schedule allows.</p>
+ <div class="card notice navy"><h3>⚓ Navy Day</h3><p>If duty has wiped you out: 5 min warm-up → first 4 exercises → 5–10 min easy cardio.</p><button onclick="useNavyDay()">⚓ Complete as Navy Day</button></div>
+ <div class="card"><h3>Warm-up</h3><label class="check"><input type="checkbox" ${state.gymChecks['warm_'+state.week+'_'+next]?'checked':''} onchange="toggle(state.gymChecks,'warm_${state.week}_${next}')"><span>5–10 minutes easy cardio + mobility</span></label></div>
+ <div class="card"><h3>Weights</h3>`;
+ w.ex.forEach((e,i)=>{const k='log_'+state.week+'_'+next+'_'+i,log=state.logs[k]||{};html+=`<div class="exercise"><div class="row"><b>${e[0]}</b><span class="small">${e[1]}</span></div><div class="sets">${[1,2,3].map(s=>`<label>Set ${s}<input type="number" step="1" value="${log['s'+s]||''}" onchange="logSet('${k}','s${s}',this.value)"></label>`).join('')}</div></div>`);});
+ html+=`</div><div class="card"><h3>Cardio</h3><p>${cardio}</p><label class="check"><input type="checkbox" ${state.gymChecks['cardio_'+state.week+'_'+next]?'checked':''} onchange="toggle(state.gymChecks,'cardio_${state.week}_${next}')"><span>Cardio completed</span></label></div>
+ <button style="width:100%" onclick="completeGymSession('${next}')">✓ Complete ${w.name}</button></div>`;
 }
 document.getElementById('gym').innerHTML=html;
 }
-
 function renderWeek(){
   if(state.preStart){document.getElementById('week').innerHTML='<div class="card"><h2>📅 Week 1 starts Monday 17 August</h2><p class="small">Your weekly overview will begin tracking Monday–Sunday once the plan starts.</p></div>';return;}
   const wk=state.week;
@@ -329,7 +368,7 @@ function renderWeek(){
   <div class="card"><div class="row"><div><h2>📅 Week ${wk} Overview</h2><div class="small">Cycle ${state.cycle} • 7-day view</div></div><span class="pill blue">${pctWeek}%</span></div></div>
   <div class="grid">
     <div class="stat"><b>${pctWeek}%</b><span>Checklist complete</span></div>
-    <div class="stat"><b>${gymDays}</b><span>Gym/Navy days logged</span></div>
+    <div class="stat"><b>${gymDays} / 3</b><span>Gym sessions complete</span></div>
     <div class="stat"><b>${navyDays}</b><span>Navy Days used</span></div>
     <div class="stat"><b>~${Math.round(calTotal/7)}</b><span>Average estimated kcal</span></div>
   </div>
@@ -371,14 +410,7 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <script>
-function plannedDinnerKcal(){
-  if(hsToday()){
-    const vals=[550,600,650,550,600,650,550];
-    return vals[dayIndex()%vals.length];
-  }
-  const vals=[650,600,700,700,650,700,600];
-  return vals[dayIndex()%vals.length];
-}
+function plannedDinnerKcal(){ return plannedDinnerKcalForDay(dayIndex()); }
 function dinnerKcalChange(){
   const selected=getMeal('dinner');
   if(!selected || typeof selected.kcal!=='number') return null;
