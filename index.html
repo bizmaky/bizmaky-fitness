@@ -22,7 +22,7 @@ button.secondary{background:#e5e7eb;color:#111827}.row{display:flex;gap:8px;alig
 .small{font-size:12px;color:var(--muted)}.pill{display:inline-block;border-radius:99px;padding:4px 8px;font-size:11px;font-weight:800;background:#e5e7eb;margin-right:5px}.pill.green{background:#dcfce7;color:#166534}.pill.blue{background:#dbeafe;color:#1e40af}.pill.orange{background:#ffedd5;color:#9a3412}
 select,input[type=number],input[type=date]{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit}
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);z-index:10}
-nav button{background:#fff;color:#6b7280;border-radius:0;padding:11px 4px;font-size:11px}nav button.active{color:var(--accent)}
+nav button{background:#fff;color:#6b7280;border-radius:0;padding:10px 2px;font-size:10px}nav button.active{color:var(--accent)}
 .exercise{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0}.sets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.sets label{font-size:10px;color:var(--muted)}.sets input{padding:7px;font-size:13px}
 .notice{background:#eff6ff;border:1px solid #bfdbfe;padding:12px;border-radius:12px;font-size:13px}.navy{background:#fff7ed;border-color:#fed7aa}.success{background:#f0fdf4;border-color:#bbf7d0}
 .progress{height:12px;background:#e5e7eb;border-radius:99px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0}
@@ -37,19 +37,21 @@ footer{max-width:760px;margin:20px auto;color:var(--muted);font-size:11px;paddin
 <section id="diet" class="view"></section>
 <section id="gym" class="view"></section>
 <section id="progress" class="view"></section>
+<section id="week" class="view"></section>
 </main>
 <nav>
 <button data-view="dashboard" onclick="show('dashboard')">🏠<br>Today</button>
 <button data-view="diet" onclick="show('diet')">🥗<br>Diet</button>
 <button data-view="gym" onclick="show('gym')">🏋️<br>Gym</button>
+<button data-view="week" onclick="show('week')">📅<br>Week</button>
 <button data-view="progress" onclick="show('progress')">📈<br>Progress</button>
 </nav>
-<footer>Built around your 1,800–2,000 kcal target, Huel lunch/dinner allocation, 3 gym days/week and the Navy Day fallback.</footer>
+<footer>Built around your 1,800–2,000 kcal target, Huel meals, 3 gym days/week, flexible galley swaps and Navy Day.</footer>
 <script>
 const KEY='bizmakyFitnessV1';
 const state=JSON.parse(localStorage.getItem(KEY)||'null')||{
  startWeight:120, goalWeight:85, currentWeight:120, cycle:1, week:1, day:1,
- dietChecks:{}, gymChecks:{}, logs:{}, weights:[], huelDiet:36, huelHS:14
+ dietChecks:{}, gymChecks:{}, logs:{}, weights:[], huelDiet:36, huelHS:14, meals:{}
 };
 function save(){localStorage.setItem(KEY,JSON.stringify(state));}
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -95,48 +97,171 @@ let items=[`Breakfast: ${breakfasts[state.day-1]}`,`Lunch: Huel Diet — 1 servi
 if(isGymDay()) items.push(`Gym: ${workouts[gymType()].name}`); else items.push('Recovery day: rest or optional easy walk');
 return items;
 }
+
+function getMealForDay(type, absoluteIndex){
+  const m=state.meals && state.meals[type+'_'+absoluteIndex];
+  return m || null;
+}
+function plannedDinnerKcalForDay(absoluteIndex){
+  const wk=Math.floor(absoluteIndex/7)+1;
+  const day=absoluteIndex%7;
+  if(hsDays[wk] && hsDays[wk].includes(absoluteIndex+1)){
+    const vals=[550,600,650,550,600,650,550];
+    return vals[day%vals.length];
+  }
+  const vals=[650,600,700,700,650,700,600];
+  return vals[day%vals.length];
+}
+function estimatedKcalForDay(absoluteIndex){
+  const day=absoluteIndex%7;
+  const b=getMealForDay('breakfast',absoluteIndex);
+  const d=getMealForDay('dinner',absoluteIndex);
+  const breakfastKcal=b && typeof b.kcal==='number' ? b.kcal : 350;
+  const dinnerKcal=d && typeof d.kcal==='number' ? d.kcal : plannedDinnerKcalForDay(absoluteIndex);
+  return breakfastKcal+200+120+dinnerKcal;
+}
+function dayCompletion(absoluteIndex){
+  const items=['t'+absoluteIndex+'_0','t'+absoluteIndex+'_1','t'+absoluteIndex+'_2','t'+absoluteIndex+'_3','t'+absoluteIndex+'_4'];
+  const done=items.filter(k=>state.dietChecks[k]).length;
+  const gymDone=!!(state.gymChecks['navy'+absoluteIndex] || state.gymChecks['w'+absoluteIndex+'_warm'] || state.gymChecks['w'+absoluteIndex+'_0'] || state.gymChecks['w'+absoluteIndex+'_1']);
+  return {done,total:items.length,gymDone,navy:!!state.gymChecks['navy'+absoluteIndex]};
+}
+function useNavyDay(){
+  state.gymChecks['navy'+dayIndex()]=true;
+  save(); renderAll(); show('dashboard');
+}
+function clearNavyDay(){
+  delete state.gymChecks['navy'+dayIndex()];
+  save(); renderAll();
+}
+
 function renderDashboard(){
-let done=todayItems().filter((_,i)=>state.dietChecks['t'+dayIndex()+'_'+i]).length;
-let total=todayItems().length;
+let selectedDinner=getMeal('dinner');
+let dinnerText=selectedDinner?selectedDinner.name:(hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]);
+let selectedBreakfast=getMeal('breakfast');
+let breakfastText=selectedBreakfast?selectedBreakfast.name:breakfasts[state.day-1];
+let items=[`Breakfast: ${breakfastText}`,`Lunch: Huel Diet — 1 serving`,`Snack: ${snacks[state.day-1]}`,`Dinner: ${dinnerText}`,`Daily calorie target: 1,800–2,000 kcal`];
+if(isGymDay()) items.push(`Gym: ${workouts[gymType()].name}`); else items.push('Recovery day: rest or optional easy walk');
+let done=items.filter((_,i)=>state.dietChecks['t'+dayIndex()+'_'+i]).length;
+let total=items.length;
+let navy=!!state.gymChecks['navy'+dayIndex()];
 document.getElementById('dashboard').innerHTML=`
 <div class="card"><div class="row"><div><h2>Today — ${days[state.day-1]}</h2><div class="small">Cycle ${state.cycle} • Week ${state.week} • Day ${state.day}</div></div><span class="pill blue">${done}/${total}</span></div></div>
 <div class="grid">
 <div class="stat"><b>${state.currentWeight} kg</b><span>Current weight</span></div>
 <div class="stat"><b>${state.goalWeight} kg</b><span>Goal weight</span></div>
 <div class="stat"><b>1,900</b><span>Target kcal</span></div>
+<div class="stat"><b>~${dayCalorieEstimate()}</b><span>Estimated kcal</span></div>
 <div class="stat"><b>${state.huelDiet}</b><span>Huel Diet left</span></div>
 <div class="stat"><b>${state.huelHS}</b><span>H&S left</span></div>
-<div class="stat"><b>${Math.round(pct())}%</b><span>Goal progress</span></div>
 </div>
-<div class="card"><h3>Today's checklist</h3>${todayItems().map((x,i)=>`<label class="check ${state.dietChecks['t'+dayIndex()+'_'+i]?'done':''}"><input type="checkbox" ${state.dietChecks['t'+dayIndex()+'_'+i]?'checked':''} onchange="toggle(state.dietChecks,'t${dayIndex()}_${i}')"><span>${x}</span></label>`).join('')}</div>
-<div class="card notice navy"><b>⚓ Navy Day</b><br>If you're exhausted after duty, you have not failed by doing less. On a Navy Day, do the 30-minute minimum session: warm up, complete the first 4 exercises, then 5–10 minutes easy cardio. Tick it off and keep the routine alive.</div>
+<div class="card"><h3>Today's checklist</h3>
+${items.map((x,i)=>`<label class="check ${state.dietChecks['t'+dayIndex()+'_'+i]?'done':''}"><input type="checkbox" ${state.dietChecks['t'+dayIndex()+'_'+i]?'checked':''} onchange="toggle(state.dietChecks,'t${dayIndex()}_${i}')"><span>${x}</span></label>`).join('')}
+</div>
+<div class="card notice navy">
+<h3>⚓ Navy Day</h3>
+${navy
+? `<p><b>Navy Day is active.</b> Today counts as a successful reduced session.</p><button class="secondary" onclick="clearNavyDay()">Undo Navy Day</button>`
+: `<p>Exhausted after duty? You can switch today's gym session to the 30-minute minimum: 5 min warm-up → first 4 exercises → 5–10 min easy cardio.</p><button onclick="useNavyDay()">⚓ Use Navy Day today</button>`}
+</div>
+<div class="card"><h3>🍽️ Change today's meal</h3>
+<p class="small">Galley changed? Record what you actually had and adjust the calorie estimate.</p>
+${mealPicker('dinner','Dinner')}
+${mealPicker('breakfast','Breakfast')}
+</div>
 <div class="card"><h3>Today's Huel stock</h3><div class="row"><span>Lunch — Huel Diet</span><button onclick="useHuel('diet')">Use 1</button></div><div class="row"><span>Dinner — H&S</span><button onclick="useHuel('hs')">Use 1</button></div><p class="small">Only tap “Use 1” when you actually consume that serving.</p></div>`;
 }
-function useHuel(type){if(type==='diet'&&state.huelDiet>0)state.huelDiet--;if(type==='hs'&&state.huelHS>0)state.huelHS--;save();renderAll()}
 function renderDiet(){
-let html=`<div class="card"><h2>🥗 4-Week Diet</h2><p class="small">Target 1,800–2,000 kcal/day • 1,900 kcal central target</p><div class="row"><button class="secondary" onclick="changeDay(-1)">← Previous</button><b>Week ${state.week}, ${days[state.day-1]}</b><button class="secondary" onclick="changeDay(1)">Next →</button></div></div>`;
+let currentDinner = getMeal('dinner');
+let currentBreakfast = getMeal('breakfast');
+let dinnerDefault = hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length];
+let breakfastDefault = breakfasts[state.day-1];
+let html=`<div class="card"><h2>🥗 4-Week Diet</h2>
+<p class="small">Target 1,800–2,000 kcal/day • estimates are guides, not exact galley nutrition</p>
+<div class="row"><button class="secondary" onclick="changeDay(-1)">← Previous</button><b>Week ${state.week}, ${days[state.day-1]}</b><button class="secondary" onclick="changeDay(1)">Next →</button></div></div>`;
+
 html+=`<div class="card"><h3>Meals</h3>`;
-let items=[['Breakfast',breakfasts[state.day-1]],['Lunch','Huel Diet — 1 serving (≈200 kcal)'],['Snack',snacks[state.day-1]],['Dinner',hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]]];
-items.forEach((it,i)=>{let k='d'+dayIndex()+'_'+i;html+=`<label class="check ${state.dietChecks[k]?'done':''}"><input type="checkbox" ${state.dietChecks[k]?'checked':''} onchange="toggle(state.dietChecks,'${k}')"><span><b>${it[0]}</b><br>${it[1]}</span></label>`});
-html+=`</div><div class="card"><h3>Galley fallback</h3><p>Choose protein + sensible potato/rice/pasta portion + 2 portions vegetables. Higher-calorie meals are allowed; control portions and skip extra sides where possible.</p></div>`;
+html+=mealPicker('breakfast','🥣 Breakfast');
+html+=`<div class="check ${state.dietChecks['d'+dayIndex()+'_1']?'done':''}">
+<input type="checkbox" ${state.dietChecks['d'+dayIndex()+'_1']?'checked':''} onchange="toggle(state.dietChecks,'d${dayIndex()}_1')">
+<span><b>🥤 Lunch</b><br>Huel Diet — 1 serving <span class="small">(~200 kcal — check your pack label)</span></span></div>`;
+html+=`<div class="check ${state.dietChecks['d'+dayIndex()+'_2']?'done':''}">
+<input type="checkbox" ${state.dietChecks['d'+dayIndex()+'_2']?'checked':''} onchange="toggle(state.dietChecks,'d${dayIndex()}_2')">
+<span><b>🍎 Snack</b><br>${snacks[state.day-1]}</span></div>`;
+html+=mealPicker('dinner','🍽️ Dinner');
+html+=`<p class="small"><b>Planned dinner:</b> ${dinnerDefault}</p>`;
+html+=`</div>`;
+
+html+=`<div class="card notice">
+<b>🍽️ Galley reality check</b><br>
+If the planned meal isn't being served, simply choose what you actually eat above. The app will replace the planned dinner and use the selected calorie estimate instead.
+</div>`;
+
+html+=`<div class="card">
+<h3>Estimated daily calories</h3>
+<div class="stat"><b>~${dayCalorieEstimate()} kcal</b><span>Breakfast + Huel lunch + snack allowance + selected dinner</span></div>
+<p class="small">This is an estimate. Galley portions can vary considerably. If you know the meal calories, use <b>Enter a different meal + kcal</b> for a better estimate.</p>
+</div>`;
+
 document.getElementById('diet').innerHTML=html;
 }
 function changeDay(delta){let n=(state.week-1)*7+state.day-1+delta;if(n<0)n=27;if(n>27)n=0;state.week=Math.floor(n/7)+1;state.day=n%7+1;save();renderAll()}
 function renderGym(){
-let type=gymType(), w=workouts[type], navy=!isGymDay();
+let type=gymType(), w=workouts[type], navy=!isGymDay() || !!state.gymChecks['navy'+dayIndex()];
 let cardio=state.week===1?'10–15 min easy':state.week===2?'15–20 min easy/moderate':state.week===3?'20 min intervals': '20 min moderate/interval';
-let html=`<div class="card"><div class="row"><div><h2>🏋️ ${w.name}</h2><div class="small">Week ${state.week} • ${days[state.day-1]}</div></div><span class="pill ${navy?'orange':'green'}">${navy?'REST':'GYM DAY'}</span></div></div>`;
-if(navy){html+=`<div class="card notice navy"><b>⚓ Navy Day option</b><p>Duty has wiped you out? Do the minimum: 5 min warm-up → first 4 exercises → 5–10 min easy cardio. If even that is too much, take the recovery day without guilt.</p><button onclick="completeNavy()">Complete Navy Day</button></div>`}
-else{
+let html=`<div class="card"><div class="row"><div><h2>🏋️ ${w.name}</h2><div class="small">Week ${state.week} • ${days[state.day-1]}</div></div><span class="pill ${navy?'orange':'green'}">${navy?'NAVY DAY':'GYM DAY'}</span></div></div>`;
+if(navy){
+html+=`<div class="card notice navy"><b>⚓ Navy Day</b><p>Do the minimum: 5 min warm-up → first 4 exercises → 5–10 min easy cardio. If you're genuinely exhausted, recovery is also a valid choice.</p><button onclick="completeNavy()">Complete Navy Day</button>${isGymDay()&&!state.gymChecks['navy'+dayIndex()]?`<button class="secondary" style="margin-left:6px" onclick="clearNavyDay()">Use full session instead</button>`:''}</div>`;
+}else{
 html+=`<div class="card"><h3>Warm-up</h3><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_warm']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_warm')"><span>5–10 minutes easy cardio + mobility</span></label></div>`;
 html+=`<div class="card"><h3>Weights</h3>`;
-w.ex.forEach((e,i)=>{let k='w'+dayIndex()+'_'+i;let log=state.logs[k]||{};html+=`<div class="exercise"><div class="row"><b>${e[0]}</b><span class="small">${e[1]}</span></div><div class="sets"><label>Set 1 kg<input type="number" inputmode="decimal" value="${log.s1||''}" onchange="logSet('${k}','s1',this.value)"></label><label>Set 2 kg<input type="number" inputmode="decimal" value="${log.s2||''}" onchange="logSet('${k}','s2',this.value)"></label><label>Set 3 kg<input type="number" inputmode="decimal" value="${log.s3||''}" onchange="logSet('${k}','s3',this.value)"></label></div><label class="check"><input type="checkbox" ${state.gymChecks[k]?'checked':''} onchange="toggle(state.gymChecks,'${k}')"><span>Completed</span></label></div>`});
-html+=`</div><div class="card"><h3>Cardio</h3><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_cardio']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_cardio')"><span>${cardio}</span></label></div>`;
+w.ex.forEach((e,i)=>{let k='w'+dayIndex()+'_'+i;let log=state.logs[k]||{};html+=`<div class="exercise"><div class="row"><b>${e[0]}</b><span class="small">${e[1]}</span></div><p class="small">${e[2]}</p><div class="sets">${[1,2,3].map(s=>`<label>Set ${s}<input type="number" step="1" value="${log['s'+s]||''}" onchange="logSet('${k}','s${s}',this.value)"></label>`).join('')}</div></div>`});
+html+=`</div><div class="card"><h3>Cardio</h3><p>${cardio}</p><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_cardio']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_cardio')"><span>Cardio completed</span></label></div>`;
 }
 document.getElementById('gym').innerHTML=html;
 }
-function logSet(k,s,v){state.logs[k]=state.logs[k]||{};state.logs[k][s]=v;save()}
-function completeNavy(){state.gymChecks['navy'+dayIndex()]=true;save();renderAll()}
+
+function renderWeek(){
+  const wk=state.week;
+  let totalDone=0,totalItems=0,gymDays=0,navyDays=0,calTotal=0;
+  let rows='';
+  for(let d=0;d<7;d++){
+    const idx=(wk-1)*7+d;
+    const c=dayCompletion(idx);
+    totalDone+=c.done; totalItems+=c.total; calTotal+=estimatedKcalForDay(idx);
+    if(c.gymDone) gymDays++;
+    if(c.navy) navyDays++;
+    const b=getMealForDay('breakfast',idx);
+    const dinner=getMealForDay('dinner',idx);
+    const dinnerName=dinner?dinner.name:(hsDays[wk].includes(idx+1)?hs[d%hs.length]:galley[d%galley.length]);
+    const dinnerK=dinner&&typeof dinner.kcal==='number'?dinner.kcal:plannedDinnerKcalForDay(idx);
+    const gymLabel=c.navy?'⚓ Navy Day':([1,3,5].includes(d+1)?'🏋️ Gym':'— Rest');
+    rows+=`<div class="card" style="margin:8px 0">
+      <div class="row"><div><b>${days[d]}</b><div class="small">${c.done}/${c.total} checklist • ${gymLabel}</div></div><span class="pill ${c.done===c.total?'green':'blue'}">${Math.round(c.done/c.total*100)}%</span></div>
+      <div class="small" style="margin-top:7px">🥣 ${b?b.name:breakfasts[d]}<br>🥤 Huel Diet lunch<br>🍽️ ${dinnerName}<br>🔥 ~${estimatedKcalForDay(idx)} kcal</div>
+      ${dinner?`<div class="small" style="margin-top:5px"><b>Dinner change:</b> ${dinnerK>=plannedDinnerKcalForDay(idx)?'+':''}${dinnerK-plannedDinnerKcalForDay(idx)} kcal vs plan</div>`:''}
+    </div>`;
+  }
+  const pctWeek=totalItems?Math.round(totalDone/totalItems*100):0;
+  document.getElementById('week').innerHTML=`
+  <div class="card"><div class="row"><div><h2>📅 Week ${wk} Overview</h2><div class="small">Cycle ${state.cycle} • 7-day view</div></div><span class="pill blue">${pctWeek}%</span></div></div>
+  <div class="grid">
+    <div class="stat"><b>${pctWeek}%</b><span>Checklist complete</span></div>
+    <div class="stat"><b>${gymDays}</b><span>Gym/Navy days logged</span></div>
+    <div class="stat"><b>${navyDays}</b><span>Navy Days used</span></div>
+    <div class="stat"><b>~${Math.round(calTotal/7)}</b><span>Average estimated kcal</span></div>
+  </div>
+  <div class="card"><p class="small">This is your whole week at a glance. A partial day is still progress — the aim is consistency, not perfection.</p>
+  <div class="row"><button class="secondary" onclick="changeWeek(-1)">← Previous week</button><b>Week ${wk}</b><button class="secondary" onclick="changeWeek(1)">Next week →</button></div></div>
+  ${rows}`;
+}
+function changeWeek(delta){
+  let w=state.week+delta;
+  if(w<1)w=4;if(w>4)w=1;
+  state.week=w;
+  state.day=1;
+  save();renderAll();show('week');
+}
 function renderProgress(){
 let lost=state.startWeight-state.currentWeight;
 let html=`<div class="card"><h2>📈 Progress</h2><div class="grid"><div class="stat"><b>${state.currentWeight} kg</b><span>Current</span></div><div class="stat"><b>${lost.toFixed(1)} kg</b><span>Lost</span></div><div class="stat"><b>${Math.round(pct())}%</b><span>To goal</span></div><div class="stat"><b>Cycle ${state.cycle}</b><span>Current cycle</span></div></div></div>
@@ -150,7 +275,7 @@ document.getElementById('progress').innerHTML=html;
 function addWeight(){let v=parseFloat(document.getElementById('weightInput').value);if(!isNaN(v)){state.currentWeight=v;state.weights.push({date:new Date().toLocaleDateString('en-GB'),weight:v});save();renderAll()}}
 function nextCycle(){state.cycle++;state.week=1;state.day=1;state.huelDiet=36;state.huelHS=14;state.dietChecks={};state.gymChecks={};state.logs={};save();renderAll()}
 function show(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(v).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAll()}
-function renderAll(){renderDashboard();renderDiet();renderGym();renderProgress()}
+function renderAll(){renderDashboard();renderDiet();renderGym();renderWeek();renderProgress()}
 renderAll();
 </script>
 <script>
@@ -158,6 +283,22 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   });
+}
+</script>
+
+<script>
+function plannedDinnerKcal(){
+  if(hsToday()){
+    const vals=[550,600,650,550,600,650,550];
+    return vals[dayIndex()%vals.length];
+  }
+  const vals=[650,600,700,700,650,700,600];
+  return vals[dayIndex()%vals.length];
+}
+function dinnerKcalChange(){
+  const selected=getMeal('dinner');
+  if(!selected || typeof selected.kcal!=='number') return null;
+  return selected.kcal-plannedDinnerKcal();
 }
 </script>
 </body>
