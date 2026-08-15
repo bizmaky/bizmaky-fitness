@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Bizmaky Fitness</title>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--good:#16a34a;--warn:#d97706}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:76px}
+header{background:#111827;color:#fff;padding:18px 16px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:22px}header p{margin:3px 0 0;color:#d1d5db;font-size:13px}
+main{max-width:760px;margin:auto;padding:14px}.view{display:none}.view.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin:10px 0;box-shadow:0 2px 8px #00000008}
+h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stat{padding:13px;border:1px solid var(--line);border-radius:13px;background:#fafafa}.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--muted)}
+button,.btn{border:0;border-radius:11px;padding:11px 13px;background:var(--accent);color:white;font-weight:700;font-size:14px}
+button.secondary{background:#e5e7eb;color:#111827}.row{display:flex;gap:8px;align-items:center;justify-content:space-between}.row+ .row{margin-top:8px}
+.check{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}.check:last-child{border-bottom:0}
+.check input{width:22px;height:22px;accent-color:var(--good);margin-top:1px}.done{text-decoration:line-through;color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}.pill{display:inline-block;border-radius:99px;padding:4px 8px;font-size:11px;font-weight:800;background:#e5e7eb;margin-right:5px}.pill.green{background:#dcfce7;color:#166534}.pill.blue{background:#dbeafe;color:#1e40af}.pill.orange{background:#ffedd5;color:#9a3412}
+select,input[type=number],input[type=date]{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);z-index:10}
+nav button{background:#fff;color:#6b7280;border-radius:0;padding:11px 4px;font-size:11px}nav button.active{color:var(--accent)}
+.exercise{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0}.sets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.sets label{font-size:10px;color:var(--muted)}.sets input{padding:7px;font-size:13px}
+.notice{background:#eff6ff;border:1px solid #bfdbfe;padding:12px;border-radius:12px;font-size:13px}.navy{background:#fff7ed;border-color:#fed7aa}.success{background:#f0fdf4;border-color:#bbf7d0}
+.progress{height:12px;background:#e5e7eb;border-radius:99px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;border-bottom:1px solid var(--line);text-align:left}
+footer{max-width:760px;margin:20px auto;color:var(--muted);font-size:11px;padding:0 14px}
+</style>
+</head>
+<body>
+<header><h1>⚓ Bizmaky Fitness</h1><p>120 kg → 85 kg • 4-week rolling plan</p></header>
+<main>
+<section id="dashboard" class="view active"></section>
+<section id="diet" class="view"></section>
+<section id="gym" class="view"></section>
+<section id="progress" class="view"></section>
+</main>
+<nav>
+<button data-view="dashboard" onclick="show('dashboard')">🏠<br>Today</button>
+<button data-view="diet" onclick="show('diet')">🥗<br>Diet</button>
+<button data-view="gym" onclick="show('gym')">🏋️<br>Gym</button>
+<button data-view="progress" onclick="show('progress')">📈<br>Progress</button>
+</nav>
+<footer>Built around your 1,800–2,000 kcal target, Huel lunch/dinner allocation, 3 gym days/week and the Navy Day fallback.</footer>
+<script>
+const KEY='bizmakyFitnessV1';
+const state=JSON.parse(localStorage.getItem(KEY)||'null')||{
+ startWeight:120, goalWeight:85, currentWeight:120, cycle:1, week:1, day:1,
+ dietChecks:{}, gymChecks:{}, logs:{}, weights:[], huelDiet:36, huelHS:14
+};
+function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const breakfasts=[
+'Overnight oats + frozen fruit','2 poached eggs + 2 tomatoes + toast',
+'3 boiled eggs + fruit + toast','2 poached eggs + tomatoes + beans + toast',
+'Overnight oats + frozen fruit','2 poached eggs + 2 tomatoes + toast','3 boiled eggs + fruit + toast'
+];
+const snacks=['Apple + 1 biscuit','Banana','Grapes + 1 biscuit','Apple','Banana + 1 biscuit','Fruit','Apple + 1 biscuit'];
+const hsDays={1:[2,4,6,7],2:[9,11,13,14],3:[16,18,20],4:[23,25,27]};
+const galley=[
+'Chicken + potatoes/rice + 2 portions vegetables',
+'Fish + potatoes + vegetables + sensible gravy',
+'Roast: lean meat + potatoes + plenty of vegetables',
+'Chicken curry + rice + vegetables; go easy on naan',
+'Lean pasta + tomato sauce + meat/chicken + vegetables',
+'Burger + salad/veg; small or skip chips',
+'Fish/chicken + rice/potatoes + vegetables'
+];
+const hs=[
+'Huel H&S + 2 eggs + vegetables + fruit',
+'Huel H&S + lean chicken/fish + vegetables',
+'Huel H&S + 2 eggs + 1–2 toast + vegetables',
+'Huel H&S + beans + vegetables + fruit',
+'Huel H&S + lean protein + vegetables + small potato/rice portion',
+'Huel H&S + 2 eggs + salad/veg + yoghurt',
+'Huel H&S + lean protein + vegetables + fruit'
+];
+const workouts={
+A:{name:'Day A — Full Body',ex:[['Leg press','3 × 10'],['Chest press','3 × 10'],['Lat pulldown','3 × 10'],['Seated leg curl','3 × 12'],['Seated cable row','3 × 10'],['Machine shoulder press','2 × 10'],['Triceps pushdown','2 × 12'],['Dumbbell curls','2 × 12']]},
+B:{name:'Day B — Lower + Conditioning',ex:[['Leg press','3 × 12'],['Romanian deadlift','3 × 10'],['Leg extension','3 × 12'],['Seated leg curl','3 × 12'],['Calf raise','3 × 15'],['Cable crunch','3 × 12–15']]},
+C:{name:'Day C — Upper + Conditioning',ex:[['Chest press','3 × 10'],['Lat pulldown','3 × 10'],['Seated cable row','3 × 10'],['Machine shoulder press','3 × 10'],['Cable lateral raise','2 × 12'],['Triceps pushdown','3 × 12'],['Dumbbell curl','3 × 12']]}
+};
+function dayIndex(){return (state.week-1)*7+(state.day-1)}
+function workoutKey(){return ['A','B','C'][[1,3,5].includes(state.day)?[1,3,5].indexOf(state.day):0]}
+function isGymDay(){return [1,3,5].includes(state.day)}
+function gymType(){return state.day===1?'A':state.day===3?'B':'C'}
+function hsToday(){return hsDays[state.week].includes(dayIndex()+1)}
+function toggle(obj,key){obj[key]=!obj[key];save();renderAll()}
+function pct(){return Math.max(0,Math.min(100,(state.startWeight-state.currentWeight)/(state.startWeight-state.goalWeight)*100))}
+function todayItems(){
+let items=[`Breakfast: ${breakfasts[state.day-1]}`,`Lunch: Huel Diet — 1 serving`,`Snack: ${snacks[state.day-1]}`,`Dinner: ${hsToday()?hs[(dayIndex())%hs.length]:galley[dayIndex()%galley.length]}`,`Daily calorie target: 1,800–2,000 kcal`];
+if(isGymDay()) items.push(`Gym: ${workouts[gymType()].name}`); else items.push('Recovery day: rest or optional easy walk');
+return items;
+}
+function renderDashboard(){
+let done=todayItems().filter((_,i)=>state.dietChecks['t'+dayIndex()+'_'+i]).length;
+let total=todayItems().length;
+document.getElementById('dashboard').innerHTML=`
+<div class="card"><div class="row"><div><h2>Today — ${days[state.day-1]}</h2><div class="small">Cycle ${state.cycle} • Week ${state.week} • Day ${state.day}</div></div><span class="pill blue">${done}/${total}</span></div></div>
+<div class="grid">
+<div class="stat"><b>${state.currentWeight} kg</b><span>Current weight</span></div>
+<div class="stat"><b>${state.goalWeight} kg</b><span>Goal weight</span></div>
+<div class="stat"><b>1,900</b><span>Target kcal</span></div>
+<div class="stat"><b>${state.huelDiet}</b><span>Huel Diet left</span></div>
+<div class="stat"><b>${state.huelHS}</b><span>H&S left</span></div>
+<div class="stat"><b>${Math.round(pct())}%</b><span>Goal progress</span></div>
+</div>
+<div class="card"><h3>Today's checklist</h3>${todayItems().map((x,i)=>`<label class="check ${state.dietChecks['t'+dayIndex()+'_'+i]?'done':''}"><input type="checkbox" ${state.dietChecks['t'+dayIndex()+'_'+i]?'checked':''} onchange="toggle(state.dietChecks,'t${dayIndex()}_${i}')"><span>${x}</span></label>`).join('')}</div>
+<div class="card notice navy"><b>⚓ Navy Day</b><br>If you're exhausted after duty, you have not failed by doing less. On a Navy Day, do the 30-minute minimum session: warm up, complete the first 4 exercises, then 5–10 minutes easy cardio. Tick it off and keep the routine alive.</div>
+<div class="card"><h3>Today's Huel stock</h3><div class="row"><span>Lunch — Huel Diet</span><button onclick="useHuel('diet')">Use 1</button></div><div class="row"><span>Dinner — H&S</span><button onclick="useHuel('hs')">Use 1</button></div><p class="small">Only tap “Use 1” when you actually consume that serving.</p></div>`;
+}
+function useHuel(type){if(type==='diet'&&state.huelDiet>0)state.huelDiet--;if(type==='hs'&&state.huelHS>0)state.huelHS--;save();renderAll()}
+function renderDiet(){
+let html=`<div class="card"><h2>🥗 4-Week Diet</h2><p class="small">Target 1,800–2,000 kcal/day • 1,900 kcal central target</p><div class="row"><button class="secondary" onclick="changeDay(-1)">← Previous</button><b>Week ${state.week}, ${days[state.day-1]}</b><button class="secondary" onclick="changeDay(1)">Next →</button></div></div>`;
+html+=`<div class="card"><h3>Meals</h3>`;
+let items=[['Breakfast',breakfasts[state.day-1]],['Lunch','Huel Diet — 1 serving (≈200 kcal)'],['Snack',snacks[state.day-1]],['Dinner',hsToday()?hs[dayIndex()%hs.length]:galley[dayIndex()%galley.length]]];
+items.forEach((it,i)=>{let k='d'+dayIndex()+'_'+i;html+=`<label class="check ${state.dietChecks[k]?'done':''}"><input type="checkbox" ${state.dietChecks[k]?'checked':''} onchange="toggle(state.dietChecks,'${k}')"><span><b>${it[0]}</b><br>${it[1]}</span></label>`});
+html+=`</div><div class="card"><h3>Galley fallback</h3><p>Choose protein + sensible potato/rice/pasta portion + 2 portions vegetables. Higher-calorie meals are allowed; control portions and skip extra sides where possible.</p></div>`;
+document.getElementById('diet').innerHTML=html;
+}
+function changeDay(delta){let n=(state.week-1)*7+state.day-1+delta;if(n<0)n=27;if(n>27)n=0;state.week=Math.floor(n/7)+1;state.day=n%7+1;save();renderAll()}
+function renderGym(){
+let type=gymType(), w=workouts[type], navy=!isGymDay();
+let cardio=state.week===1?'10–15 min easy':state.week===2?'15–20 min easy/moderate':state.week===3?'20 min intervals': '20 min moderate/interval';
+let html=`<div class="card"><div class="row"><div><h2>🏋️ ${w.name}</h2><div class="small">Week ${state.week} • ${days[state.day-1]}</div></div><span class="pill ${navy?'orange':'green'}">${navy?'REST':'GYM DAY'}</span></div></div>`;
+if(navy){html+=`<div class="card notice navy"><b>⚓ Navy Day option</b><p>Duty has wiped you out? Do the minimum: 5 min warm-up → first 4 exercises → 5–10 min easy cardio. If even that is too much, take the recovery day without guilt.</p><button onclick="completeNavy()">Complete Navy Day</button></div>`}
+else{
+html+=`<div class="card"><h3>Warm-up</h3><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_warm']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_warm')"><span>5–10 minutes easy cardio + mobility</span></label></div>`;
+html+=`<div class="card"><h3>Weights</h3>`;
+w.ex.forEach((e,i)=>{let k='w'+dayIndex()+'_'+i;let log=state.logs[k]||{};html+=`<div class="exercise"><div class="row"><b>${e[0]}</b><span class="small">${e[1]}</span></div><div class="sets"><label>Set 1 kg<input type="number" inputmode="decimal" value="${log.s1||''}" onchange="logSet('${k}','s1',this.value)"></label><label>Set 2 kg<input type="number" inputmode="decimal" value="${log.s2||''}" onchange="logSet('${k}','s2',this.value)"></label><label>Set 3 kg<input type="number" inputmode="decimal" value="${log.s3||''}" onchange="logSet('${k}','s3',this.value)"></label></div><label class="check"><input type="checkbox" ${state.gymChecks[k]?'checked':''} onchange="toggle(state.gymChecks,'${k}')"><span>Completed</span></label></div>`});
+html+=`</div><div class="card"><h3>Cardio</h3><label class="check"><input type="checkbox" ${state.gymChecks['w'+dayIndex()+'_cardio']?'checked':''} onchange="toggle(state.gymChecks,'w${dayIndex()}_cardio')"><span>${cardio}</span></label></div>`;
+}
+document.getElementById('gym').innerHTML=html;
+}
+function logSet(k,s,v){state.logs[k]=state.logs[k]||{};state.logs[k][s]=v;save()}
+function completeNavy(){state.gymChecks['navy'+dayIndex()]=true;save();renderAll()}
+function renderProgress(){
+let lost=state.startWeight-state.currentWeight;
+let html=`<div class="card"><h2>📈 Progress</h2><div class="grid"><div class="stat"><b>${state.currentWeight} kg</b><span>Current</span></div><div class="stat"><b>${lost.toFixed(1)} kg</b><span>Lost</span></div><div class="stat"><b>${Math.round(pct())}%</b><span>To goal</span></div><div class="stat"><b>Cycle ${state.cycle}</b><span>Current cycle</span></div></div></div>
+<div class="card"><h3>Update weight</h3><div class="row"><input id="weightInput" type="number" step="0.1" value="${state.currentWeight}"><button onclick="addWeight()">Save weight</button></div><p class="small">Weigh under similar conditions and focus on the trend, not one day's number.</p></div>
+<div class="card"><h3>Goal progress</h3><div class="progress"><div style="width:${pct()}%"></div></div><p class="small">${state.startWeight} kg → ${state.goalWeight} kg</p></div>
+<div class="card"><h3>Weight history</h3>${state.weights.length?'<table><tr><th>Date</th><th>Weight</th></tr>'+state.weights.slice().reverse().map(x=>`<tr><td>${x.date}</td><td>${x.weight} kg</td></tr>`).join('')+'</table>':'<p class="small">No weigh-ins saved yet.</p>'}</div>
+<div class="card"><h3>Huel stock</h3><p>Huel Diet lunches remaining: <b>${state.huelDiet}</b> / 36</p><p>Hot & Savoury dinners remaining: <b>${state.huelHS}</b> / 14</p></div>
+<div class="card"><h3>Rolling cycle</h3><p>Current: Cycle ${state.cycle}, Week ${state.week}, Day ${state.day}.</p><button onclick="nextCycle()">Start next 4-week cycle</button></div>`;
+document.getElementById('progress').innerHTML=html;
+}
+function addWeight(){let v=parseFloat(document.getElementById('weightInput').value);if(!isNaN(v)){state.currentWeight=v;state.weights.push({date:new Date().toLocaleDateString('en-GB'),weight:v});save();renderAll()}}
+function nextCycle(){state.cycle++;state.week=1;state.day=1;state.huelDiet=36;state.huelHS=14;state.dietChecks={};state.gymChecks={};state.logs={};save();renderAll()}
+function show(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(v).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAll()}
+function renderAll(){renderDashboard();renderDiet();renderGym();renderProgress()}
+renderAll();
+</script>
+</body>
+</html>
